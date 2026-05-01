@@ -43,33 +43,37 @@ export default function Home() {
 
       try {
         const response = await fetchApi("/api/habits", "GET", token);
-        setData(response.habits)
-        console.log(response);
 
-        if (response.habits) {
+        if (response.success && response.habits) {
           const fetchedStreaks: Record<string, number> = {};
-          await Promise.all(response.habits.map(async (habit: any) => {
-            try {
-              const streakRes = await fetchApi(`/api/habits/streak/${habit._id}`, "GET", token);
-              if (streakRes.success) {
-                fetchedStreaks[habit._id] = streakRes.streak;
-              }
-            } catch (err) {
-              console.error("Error fetching streak", err);
-            }
-          }));
-          setStreaks(fetchedStreaks);
-        }
+          let fetchedLogs: Record<string, boolean> = {};
 
-        // Fetch habit logs
-        const logsResponse = await fetchApi("/api/habit-logs", "GET", token);
-        if (logsResponse.success && logsResponse.logs) {
-          const fetchedLogs: Record<string, boolean> = {};
-          logsResponse.logs.forEach((log: any) => {
-            const logKey = `${log.habitId}-${log.date}`;
-            fetchedLogs[logKey] = log.completed;
-          });
+          // Fetch streaks and logs in parallel
+          const [logsResponse] = await Promise.all([
+            fetchApi("/api/habit-logs", "GET", token),
+            Promise.all(response.habits.map(async (habit: any) => {
+              try {
+                const streakRes = await fetchApi(`/api/habits/streak/${habit._id}`, "GET", token);
+                if (streakRes.success) {
+                  fetchedStreaks[habit._id] = streakRes.streak;
+                }
+              } catch (err) {
+                console.error("Error fetching streak", err);
+              }
+            }))
+          ]);
+
+          if (logsResponse.success && logsResponse.logs) {
+            logsResponse.logs.forEach((log: any) => {
+              const logKey = `${log.habitId}-${log.date}`;
+              fetchedLogs[logKey] = log.completed;
+            });
+          }
+
+          // Batch all state updates at the very end to prevent multiple re-renders
+          setStreaks(fetchedStreaks);
           setLogs(fetchedLogs);
+          setData(response.habits);
         }
       } catch (error) {
         console.error("Error fetching habits:", error);
