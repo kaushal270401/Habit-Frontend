@@ -1,9 +1,8 @@
-import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger} from "@/components/ui/dialog"
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useState } from "react";
 import { fetchApi } from "@/lib/api";
 import { AuthContext } from "../Context/AuthProvider";
 import { Plus } from "lucide-react";
@@ -36,8 +35,11 @@ const categoryMap = [
 const HabitDialog =() => {
   const auth=useContext(AuthContext)
 
-  const handleSubmit = () => {
-    fetchApi("/api/habits", "POST", auth.token,formData);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth?.token) return;
+    
+    fetchApi("/api/habits", "POST", auth.token, formData);
   };
 
   const [formData, setFormData] = useState({
