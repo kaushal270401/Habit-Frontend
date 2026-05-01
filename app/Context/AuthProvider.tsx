@@ -1,6 +1,6 @@
 'use client'
 
-import {useState ,useEffect ,createContext, ReactNode} from 'react';
+import {useState, useEffect, createContext, ReactNode, useRef} from 'react';
 import keycloak from '@/lib/keycloak'
 
 interface AuthContextType {
@@ -15,15 +15,22 @@ const AuthProvider = ({children}:{children:ReactNode}) => {
   const [token,setToken] = useState<string | null>(null);
   const [user ,setUser] = useState<Record<string,any>>({});
   const [initialized, setInitialized] = useState(false);
+  const isRun = useRef(false);
   
   useEffect(()=>{
-    keycloak.init({onLoad:'login-required'}).then((auth)=>{
+    if (isRun.current) return;
+    isRun.current = true;
+
+    keycloak.init({
+      onLoad:'login-required',
+      checkLoginIframe: false 
+    }).then((auth)=>{
         if(auth){
             setToken(keycloak.token ?? null);
             setUser(keycloak.tokenParsed ?? {}); 
         }
          setInitialized(true); 
-    })
+    }).catch(console.error)
   },[])
 
 if (!initialized) {
