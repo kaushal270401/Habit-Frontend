@@ -5,7 +5,7 @@ import keycloak from '@/lib/keycloak'
 
 interface AuthContextType {
   token: string | null;
-  user: unknown;
+  user: any;
   initialized: boolean;
 }
 
@@ -20,7 +20,7 @@ const AuthProvider = ({children}:{children:ReactNode}) => {
     keycloak.init({onLoad:'login-required'}).then((auth)=>{
         if(auth){
             setToken(keycloak.token ?? null);
-            setUser(keycloak.tokenParsed); 
+            setUser(keycloak.tokenParsed ?? {}); 
         }
          setInitialized(true); 
     })

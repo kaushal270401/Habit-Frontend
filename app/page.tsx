@@ -38,46 +38,48 @@ export default function Home() {
 
   useEffect(() => {
     const fetchHabits = async () => {
-      if (auth?.token) {
-        try {
-          const response = await fetchApi("/api/habits", "GET", auth.token);
-          setData(response.habits)
-          console.log(response);
+      if (!auth?.token) return;
+      const token = auth.token;
 
-          if (response.habits) {
-            const fetchedStreaks: Record<string, number> = {};
-            await Promise.all(response.habits.map(async (habit: any) => {
-              try {
-                const streakRes = await fetchApi(`/api/habits/streak/${habit._id}`, "GET", auth.token);
-                if (streakRes.success) {
-                  fetchedStreaks[habit._id] = streakRes.streak;
-                }
-              } catch (err) {
-                console.error("Error fetching streak", err);
+      try {
+        const response = await fetchApi("/api/habits", "GET", token);
+        setData(response.habits)
+        console.log(response);
+
+        if (response.habits) {
+          const fetchedStreaks: Record<string, number> = {};
+          await Promise.all(response.habits.map(async (habit: any) => {
+            try {
+              const streakRes = await fetchApi(`/api/habits/streak/${habit._id}`, "GET", token);
+              if (streakRes.success) {
+                fetchedStreaks[habit._id] = streakRes.streak;
               }
-            }));
-            setStreaks(fetchedStreaks);
-          }
-
-          // Fetch habit logs
-          const logsResponse = await fetchApi("/api/habit-logs", "GET", auth.token);
-          if (logsResponse.success && logsResponse.logs) {
-            const fetchedLogs: Record<string, boolean> = {};
-            logsResponse.logs.forEach((log: any) => {
-              const logKey = `${log.habitId}-${log.date}`;
-              fetchedLogs[logKey] = log.completed;
-            });
-            setLogs(fetchedLogs);
-          }
-        } catch (error) {
-          console.error("Error fetching habits:", error);
+            } catch (err) {
+              console.error("Error fetching streak", err);
+            }
+          }));
+          setStreaks(fetchedStreaks);
         }
+
+        // Fetch habit logs
+        const logsResponse = await fetchApi("/api/habit-logs", "GET", token);
+        if (logsResponse.success && logsResponse.logs) {
+          const fetchedLogs: Record<string, boolean> = {};
+          logsResponse.logs.forEach((log: any) => {
+            const logKey = `${log.habitId}-${log.date}`;
+            fetchedLogs[logKey] = log.completed;
+          });
+          setLogs(fetchedLogs);
+        }
+      } catch (error) {
+        console.error("Error fetching habits:", error);
       }
     };
     fetchHabits();
   }, [auth?.token]);
 
   const handleDelete = async(id:string)=>{
+    if (!auth?.token) return;
     try {
       const response = await fetchApi(`/api/habits/${id}`, "DELETE", auth.token);
       if (response.success) {
@@ -89,6 +91,7 @@ export default function Home() {
   }
 
   const handleHabitLogs = async(id: string, date: string) => {
+    if (!auth?.token) return;
     const logKey = `${id}-${date}`;
     const isCurrentlyCompleted = logs[logKey] || false;
     const newStatus = !isCurrentlyCompleted;
