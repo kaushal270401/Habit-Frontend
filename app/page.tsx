@@ -1,13 +1,10 @@
 'use client'
 
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import keycloak from "@/lib/keycloak";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useMemo, useState, useEffect } from "react";
 import { AuthContext } from "./Context/AuthProvider";
 import { fetchApi } from "@/lib/api";
 import HabitDialog from "./Component/HabitDialog";
-import { Trash2 } from "lucide-react";
 
 
 const getLast7Days = () => {
@@ -20,7 +17,7 @@ const getLast7Days = () => {
     days.push({
       fullDate: date,
       label: date.toLocaleDateString("en-US", { weekday: "short" }),
-      day: date.getDate(), 
+      day: date.getDate(),
       iso: date.toISOString().split("T")[0],
     });
   }
@@ -29,72 +26,79 @@ const getLast7Days = () => {
 };
 
 export default function Home() {
-  const auth=useContext(AuthContext)
-  const [data ,setData] = useState([])
+  const auth = useContext(AuthContext);
+  const [habits, setHabits] = useState<any[]>([]);
   const [logs, setLogs] = useState<Record<string, boolean>>({});
   const [streaks, setStreaks] = useState<Record<string, number>>({});
-  const username = auth?.user?.preferred_username || auth?.user?.name|| "User";
   const dates = useMemo(() => getLast7Days(), []);
+  const username = auth?.user?.preferred_username || auth?.user?.name || "User";
+  const displayName = username.charAt(0).toUpperCase() + username.slice(1);
+
+  const fetchHabits = async () => {
+    if (!auth?.token) return;
+    const habitsRes = await fetchApi("/api/habits", "GET", auth.token);
+    if (habitsRes.success) setHabits(habitsRes.habits);
+  };
+
+  const totalHabits = habits?.length || 0;
+
+  const completedToday = habits?.filter((item: any) => {
+    const today = new Date().toISOString().split("T")[0];
+    return logs[`${item._id}-${today}`];
+  }).length || 0;
 
   useEffect(() => {
-    const fetchHabits = async () => {
-      if (!auth?.token) return;
-      const token = auth.token;
+    if (!auth?.token) return;
 
+    const token = auth.token;
+
+    const load = async () => {
       try {
-        const response = await fetchApi("/api/habits", "GET", token);
+        const [habitsRes, logsRes] = await Promise.all([
+          fetchApi("/api/habits", "GET", token),
+          fetchApi("/api/habit-logs", "GET", token),
+        ]);
 
-        if (response.success && response.habits) {
-          const fetchedStreaks: Record<string, number> = {};
-          let fetchedLogs: Record<string, boolean> = {};
+        if (habitsRes.success) {
+          setHabits(habitsRes.habits);
+          const streakResults = await Promise.all(
+            habitsRes.habits.map((habit: { _id: string; }) =>
+              fetchApi(`/api/habits/streak/${habit._id}`, "GET", token)
+                .then((res) => ({ id: habit._id, streak: res.success ? res.streak : 0 }))
+                .catch(() => ({ id: habit._id, streak: 0 }))
+            )
+          );
+          setStreaks(Object.fromEntries(streakResults.map(({ id, streak }) => [id, streak])));
+        }
 
-          // Fetch streaks and logs in parallel
-          const [logsResponse] = await Promise.all([
-            fetchApi("/api/habit-logs", "GET", token),
-            Promise.all(response.habits.map(async (habit: any) => {
-              try {
-                const streakRes = await fetchApi(`/api/habits/streak/${habit._id}`, "GET", token);
-                if (streakRes.success) {
-                  fetchedStreaks[habit._id] = streakRes.streak;
-                }
-              } catch (err) {
-                console.error("Error fetching streak", err);
-              }
-            }))
-          ]);
-
-          if (logsResponse.success && logsResponse.logs) {
-            logsResponse.logs.forEach((log: any) => {
-              const logKey = `${log.habitId}-${log.date}`;
-              fetchedLogs[logKey] = log.completed;
-            });
-          }
-
-          // Batch all state updates at the very end to prevent multiple re-renders
-          setStreaks(fetchedStreaks);
-          setLogs(fetchedLogs);
-          setData(response.habits);
+        if (logsRes.success) {
+          const logMap: Record<string, boolean> = {};
+          logsRes.logs.forEach((log: any) => {
+            logMap[`${log.habitId}-${log.date}`] = log.completed;
+          });
+          setLogs(logMap);
         }
       } catch (error) {
         console.error("Error fetching habits:", error);
       }
     };
-    fetchHabits();
+
+    load();
   }, [auth?.token]);
 
-  const handleDelete = async(id:string)=>{
+  const handleDelete = async (id: string) => {
     if (!auth?.token) return;
     try {
       const response = await fetchApi(`/api/habits/${id}`, "DELETE", auth.token);
       if (response.success) {
-        setData(prevData => prevData.filter((habit: any) => habit._id !== id));
+        setHabits(prevData => prevData.filter((habit: any) => habit._id !== id));
       }
     } catch (error) {
       console.error("Error deleting habit:", error);
     }
   }
 
-  const handleHabitLogs = async(id: string, date: string) => {
+  const handleHabitLogs = async (id: string, date: string) => {
     if (!auth?.token) return;
     const logKey = `${id}-${date}`;
     const isCurrentlyCompleted = logs[logKey] || false;
@@ -106,10 +110,10 @@ export default function Home() {
       const response = await fetchApi(`/api/habit-logs`, "POST", auth.token, {
         habitId: id,
         date: date,
-        completed: newStatus 
+        completed: newStatus
       });
       if (response.success) {
-        
+
         const streakRes = await fetchApi(`/api/habits/streak/${id}`, "GET", auth.token);
         if (streakRes.success) {
           setStreaks(prev => ({ ...prev, [id]: streakRes.streak }));
@@ -123,59 +127,127 @@ export default function Home() {
   }
 
 
-  console.log(logs)
+
 
   return (
-    <div className="flex items-center justify-center">
-          <Card className="flex h-screen w-[50%] bg-[oklch(0.145_0_0)] py-10 gap-5 overflow-y-auto">
-            <div className="flex flex-row gap-5">
-              <h2 className="text-4xl font-bold text-white flex items-center gap-2">
-                🧑‍🎨 {username.charAt(0).toUpperCase() + username.slice(1)}'s habits
-              </h2>
-              <Button className='' onClick={()=>keycloak.logout()}>Logout</Button>
+    <div className="flex justify-center bg-black min-h-screen text-white">
+      <div className="w-full max-w-4xl px-4 py-8">
+
+        <div className="flex items-start justify-between mb-6">
+
+          {/* Left Section */}
+          <div className="flex flex-col gap-2">
+            <h2 className="text-3xl sm:text-4xl font-bold flex items-center gap-2">
+              🧑‍🎨 {displayName}'s Habits
+            </h2>
+
+            {/* Progress text */}
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              🔥 {completedToday}/{totalHabits} done today
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-64 h-2 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-yellow-500 transition-all duration-300"
+                style={{
+                  width: `${(completedToday / totalHabits) * 100 || 0}%`
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Right Section */}
+          <div className="flex items-center gap-4 text-gray-300">
+            <button
+              onClick={() => keycloak.logout()}
+              className="hover:text-white transition"
+            >
+              🚪 Logout
+            </button>
+
+            <button className="hover:text-white transition">
+              📊 Insights
+            </button>
+          </div>
+        </div>
+
+        <p className="text-gray-400 mb-4">
+          Start tracking your daily habits
+        </p>
+
+        <div className="mb-6">
+          <HabitDialog onHabitAdded={fetchHabits} />
+        </div>
+
+        <div className="flex flex-col gap-6">
+          {habits?.map((item: any) => {
+            return (
+              <div
+                key={item._id}
+                className="bg-zinc-900 rounded-xl p-5 shadow-md"
+              >
+                {/* Top Row */}
+                <div className="flex items-center justify-between mb-4">
+
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 flex items-center justify-center bg-zinc-800 rounded-lg text-xl">
+                      {item.icon}
+                    </div>
+
+                    <div>
+                      <h1 className="text-lg font-semibold">
+                        {item.title}
+                      </h1>
+                      <span className="text-xs text-gray-400 border border-gray-600 px-2 py-0.5 rounded">
+                        {item.category}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleDelete(item._id)}
+                    className="text-gray-400 hover:text-red-500 transition"
+                  >
+                    🗑️
+                  </button>
                 </div>
-              <p className="text-lg text-gray-400">Start tracking your daily habits</p>
-              <HabitDialog/>
-              {
-                data?.map((item:Record<string,string>)=>{
-                  return(
-                    <Card key={item._id} className="bg-[oklch(23%_0_0)] py-1.25rem min-w-[10px] min-h-[200px]">
-                      
-                        <div className='flex flex-row gap-3'>
-                        <Button className="pointer-cursor p-5 h-14 w-14 text-2xl">{item.icon}</Button>
-                        <h1 className="text-white text-xl font-bold">{item.title}</h1>
-                        <div className="border border-gray-500  h-[40%]">
-                          <p className="text-white">{item.category}</p>
-                        </div>
-                        <Button onClick={()=>handleDelete(item._id)}><Trash2 /></Button>
-                    
-                        </div>
-                        <div>Current streak: {streaks[item._id] || 0}</div>
-                        <div className="flex flex-row">
-                            {dates.map((day: any)=>{
-                                const logKey = `${item._id}-${day.iso}`;
-                                const isCompleted = logs[logKey];
-                                return (
-                                  <div key={day.iso} className="flex flex-col items-center ">
-                                      <h1 className="text-gray-200 text-sm" >{day.label.slice(0,2)}</h1>
-                                      <Button 
-                                        className={`p-5 h-14 w-14 text-2xl cursor-pointer transition-colors duration-200 ${
-                                          isCompleted 
-                                            ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-                                            : 'bg-zinc-800 hover:bg-zinc-700'
-                                        }`} 
-                                        onClick={()=>handleHabitLogs(item._id,day.iso)}
-                                      >
-                                      </Button>
-                                  </div>
-                                )
-                            })}
-                        </div>
-                    </Card>
-                  ) 
-                })
-              }
-          </Card>
-    </div>  
+
+                {/* Streak */}
+                <div className="text-sm text-gray-400 mb-3">
+                  Current streak: {streaks[item._id] || 0}
+                </div>
+
+                {/* Days */}
+                <div className="flex gap-2">
+                  {dates.map((day: any) => {
+                    const logKey = `${item._id}-${day.iso}`;
+                    const isCompleted = logs[logKey];
+
+                    return (
+                      <div key={day.iso} className="flex flex-col items-center">
+                        <span className="text-xs text-gray-400 mb-1">
+                          {day.label.slice(0, 2)}
+                        </span>
+
+                        <button
+                          className={`h-10 w-10 rounded-md transition ${isCompleted
+                              ? "bg-blue-500 hover:bg-blue-600"
+                              : "bg-zinc-800 hover:bg-zinc-700"
+                            }`}
+                          onClick={() =>
+                            handleHabitLogs(item._id, day.iso)
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
